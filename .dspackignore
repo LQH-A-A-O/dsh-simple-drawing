@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+coverage/
+.venv/
+__pycache__/
+*.pyc
+*.dspack
+*.sha256
+*.zip
+*.key
+*.pem
+.env.*
