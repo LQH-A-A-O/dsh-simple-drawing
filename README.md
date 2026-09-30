@@ -60,6 +60,13 @@
 
 把 `home/skills/layered-art/` 整个拷到你的 `DSH_HOME/skills/` 下。
 
+### 方式三：不用 DSH 也想试
+
+下载 release 里的 `dsh-simple-drawing-1.1.0-skillpack.zip` —— **这就是「赛博拼豆 skill 包」**。
+（GitHub 会剥掉资产名里的非 ASCII 字符，所以线上只能叫 ASCII 名。）
+解开是一个自带中文上手说明的目录，里面有「30 秒跑出第一张图」的指引，
+以及 6 张效果预览图（全部是原创产出，可自由转发）。
+
 ### 依赖
 
 ```bash
