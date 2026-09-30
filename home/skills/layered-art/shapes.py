@@ -21,8 +21,26 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 DEFAULT_K = 12
-DEFAULT_EPS = 3.0          # 甜点：449 块/4460 顶点就能到 4.01/255 误差
+DEFAULT_EPS = 3.0          # 甜点：471 块/4536 顶点就能到 4.09/255 误差
 DEFAULT_MIN_AREA = 25
+KMEANS_SEED = 20260928     # ⚠️ 固定 kmeans 随机种子，否则每次跑出来的块数都不同
+
+
+def _imread(path, flags=cv2.IMREAD_COLOR):
+    """读图，**能处理含中文/非 ASCII 的路径**。
+
+    ⚠️ 不要直接用 `cv2.imread` —— 它在 Windows 上走 ANSI 码页，
+       路径里只要有中文就返回 None（实测：解压到「赛博拼豆skill包」这种
+       目录下直接崩在第一步）。`np.fromfile` 走 Python 的文件 API，
+       不受码页影响，再用 `imdecode` 解码就没问题。
+    """
+    try:
+        buf = np.fromfile(path, dtype=np.uint8)
+    except OSError:
+        return None
+    if buf.size == 0:
+        return None
+    return cv2.imdecode(buf, flags)
 
 
 # ---------------------------------------------------------------- 光栅化
@@ -62,10 +80,18 @@ def to_image(spec, cmap=None, bg=(255, 255, 255)):
 
 # ---------------------------------------------------------------- 提取
 def extract(src, k=DEFAULT_K, eps=DEFAULT_EPS, min_area=DEFAULT_MIN_AREA,
-            median=3, source=None):
+            median=3, source=None, seed=KMEANS_SEED):
+    """从参考图提取「多边形 + 内孔 + 调色板」结构。
+
+    ⚠️ `seed` 必须固定。`cv2.kmeans` 即使加了 `KMEANS_PP_CENTERS`，初始化**仍是随机**的，
+       OpenCV 默认拿时钟当种子 —— 实测同一张图、同一组参数连调三次得到
+       **475 / 464 / 453 块**（顶点 4391 / 4460 / 4371）。
+       这会直接毁掉"同参数逐字节一致"的验收，也让文档里的对照表失去意义。
+       修法就是下面那句 `cv2.setRNGSeed`。
+    """
     """参考图 → 结构。src 可以是路径，也可以是 HxWx3 的 RGB numpy 数组。"""
     if isinstance(src, str):
-        bgr = cv2.imread(src)
+        bgr = _imread(src)
         if bgr is None:
             raise SystemExit('读不到图: %s' % src)
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
@@ -76,6 +102,9 @@ def extract(src, k=DEFAULT_K, eps=DEFAULT_EPS, min_area=DEFAULT_MIN_AREA,
 
     Z = rgb.reshape(-1, 3).astype(np.float32)
     crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 24, 0.5)
+    # ⚠️ 没有这一句，kmeans 每次跑出来的聚类都不一样（KMEANS_PP_CENTERS 也救不了，
+    #    它只是初始化得更聪明，仍然是随机）。固定种子后才能"同参数逐字节一致"。
+    cv2.setRNGSeed(seed)
     _, labels, centers = cv2.kmeans(Z, k, None, crit, 6, cv2.KMEANS_PP_CENTERS)
     lab = labels.reshape(H, W).astype(np.uint8)
     if median:
@@ -330,7 +359,7 @@ def paste_region(src_spec, dst_spec, x, y, w, h, feather=0):
 def verify(spec, reference):
     """重建质量：误差 + 吻合率。reference 可以是路径或 RGB 数组。"""
     if isinstance(reference, str):
-        ref = cv2.cvtColor(cv2.imread(reference), cv2.COLOR_BGR2RGB)
+        ref = cv2.cvtColor(_imread(reference), cv2.COLOR_BGR2RGB)
     else:
         ref = np.asarray(reference)[:, :, :3]
     img = to_image(spec)
